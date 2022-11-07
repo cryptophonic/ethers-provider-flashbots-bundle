@@ -10,6 +10,9 @@ export const DEFAULT_FLASHBOTS_RELAY = 'https://relay.flashbots.net'
 export const BASE_FEE_MAX_CHANGE_DENOMINATOR = 8
 const PRIVATE_TX_WAIT_BLOCKS = 25 // # of blocks
 
+declare type SigHandlerInternal = (sig: string) => void;
+declare type SigHandlerExternal = (sig: string, payload: object) => void;
+
 export enum FlashbotsBundleResolution {
   BundleIncluded,
   BlockPassedWithoutInclusion,
@@ -283,11 +286,12 @@ export class FlashbotsBundleProvider extends providers.JsonRpcProvider {
     const concatenatedHashes = txHashes.map((txHash) => txHash.slice(2)).join('')
     return keccak256(`0x${concatenatedHashes}`)
   }
-
+  
   public async sendRawBundle(
     signedBundledTransactions: Array<string>,
     targetBlockNumber: number,
-    opts?: FlashbotsOptions
+    opts?: FlashbotsOptions,
+    onSignature?: SigHandlerExternal
   ): Promise<FlashbotsTransaction> {
     const params = {
       txs: signedBundledTransactions,
@@ -298,7 +302,8 @@ export class FlashbotsBundleProvider extends providers.JsonRpcProvider {
     }
 
     const request = JSON.stringify(this.prepareRelayRequest('eth_sendBundle', [params]))
-    const response = await this.request(request)
+    const response = await this.request(request, 
+      onSignature? (sig) => {onSignature(sig, [params])}: undefined)
     if (response.error !== undefined && response.error !== null) {
       return {
         error: {
@@ -813,11 +818,16 @@ export class FlashbotsBundleProvider extends providers.JsonRpcProvider {
   public async fetchBlocksApi(blockNumber: number): Promise<BlocksApiResponse> {
     return fetchJson(`https://blocks.flashbots.net/v1/blocks?block_number=${blockNumber}`)
   }
-
-  private async request(request: string) {
+  
+  private async request(
+    request: string,
+    onSignature?: SigHandlerInternal
+  ) {
     const connectionInfo = { ...this.connectionInfo }
+    const sig = `${await this.authSigner.getAddress()}:${await this.authSigner.signMessage(id(request))}`
+    onSignature? onSignature(sig):
     connectionInfo.headers = {
-      'X-Flashbots-Signature': `${await this.authSigner.getAddress()}:${await this.authSigner.signMessage(id(request))}`,
+      'X-Flashbots-Signature': sig,
       ...this.connectionInfo.headers
     }
     return fetchJson(connectionInfo, request)
