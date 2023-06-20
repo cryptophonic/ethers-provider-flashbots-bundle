@@ -825,7 +825,7 @@ export class FlashbotsBundleProvider extends providers.JsonRpcProvider {
   ) {
     const connectionInfo = { ...this.connectionInfo }
     const sig = `${await this.authSigner.getAddress()}:${await this.authSigner.signMessage(id(request))}`
-    onSignature? onSignature(sig):
+    if (onSignature) { onSignature(sig) }
     connectionInfo.headers = {
       'X-Flashbots-Signature': sig,
       ...this.connectionInfo.headers
